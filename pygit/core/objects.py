@@ -13,17 +13,18 @@ from datetime import datetime
 from pathlib import Path
 
 from pygit.utils.hash import hash_object
+from pygit.utils.objects import get_HEAD, set_HEAD
 
 
 class GitObject(ABC):
     """Base class for all Git objects."""
 
     @abstractmethod
-    def __init__(self, repo_path: Path, id=None):
+    def __init__(self, repo_path: Path, obj_id=None):
         """Initialize the Git object."""
         self.repo_path = Path(repo_path)
         self.git_dir = repo_path / ".pygit"
-        self.id = id
+        self.obj_id = obj_id
 
     def get_object(self, hash_id: str):
         """Retrieve the blob data from storage using its id."""
@@ -44,9 +45,9 @@ class GitObject(ABC):
 class Blob(GitObject):
     """Represents a Git blob object (file content)."""
 
-    def __init__(self, data, repo_path, id=None):
+    def __init__(self, data, repo_path, obj_id=None):
         """Initialize the blob with data and optional id."""
-        super().__init__(repo_path=repo_path, id=id)
+        super().__init__(repo_path=repo_path, obj_id=obj_id)
         self.data = data
         self.type_ = "blob"
 
@@ -64,9 +65,9 @@ class Blob(GitObject):
 class Tree(GitObject):
     """Represents a Git tree object (directory structure)."""
 
-    def __init__(self, repo_path, id=None):
+    def __init__(self, repo_path, obj_id=None):
         """Initialize the tree."""
-        super().__init__(repo_path=repo_path, id=id)
+        super().__init__(repo_path=repo_path, obj_id=obj_id)
         self.type_ = "tree"
         self.entries: list[
             tuple[str, str, str]
@@ -158,9 +159,9 @@ class Tree(GitObject):
 class Commit(GitObject):
     """Represents a Git commit object (snapshot with metadata)."""
 
-    def __init__(self, message="", tree_hash_id=None, repo_path=None, id=None):
+    def __init__(self, message="", tree_hash_id=None, repo_path=None, obj_id=None):
         """Initialize the commit object."""
-        super().__init__(repo_path=repo_path, id=id)
+        super().__init__(repo_path=repo_path, obj_id=obj_id)
         self.type = "commit"
         self.message = message
         self.tree_hash_id = tree_hash_id
@@ -174,24 +175,12 @@ class Commit(GitObject):
         message: {self.message}
         tree: {self.tree_hash_id}
         """
-        HEAD = self.get_HEAD()
+        HEAD = get_HEAD(self.git_dir / "HEAD")
         if HEAD:
             commit_data += f"parent: {HEAD}\n"
         oid = hash_object(self.git_dir, commit_data, self.type)
-        self.set_HEAD(oid)
+        set_HEAD(self.git_dir / "HEAD", oid)
         return oid
-
-    def set_HEAD(self, oid):
-        """Set HEAD to point to the new commit."""
-        with open(self.git_dir / "HEAD", "w") as f:
-            f.write(oid)
-
-    def get_HEAD(self):
-        """Get the current HEAD commit hash."""
-        head_path = self.git_dir / "HEAD"
-        if os.path.isfile(head_path):
-            with open(head_path, "r") as f:
-                return f.read().strip()
 
 
 def is_ignored(path: str) -> bool:
@@ -200,7 +189,7 @@ def is_ignored(path: str) -> bool:
         return True
     gitignore_path = os.path.join(os.path.dirname(path), ".gitignore")
     if os.path.exists(gitignore_path):
-        with open(gitignore_path, "r") as f:
+        with open(gitignore_path, "r", encoding="utf-8") as f:
             patterns = [
                 line.strip() for line in f if line.strip() and not line.startswith("#")
             ]
