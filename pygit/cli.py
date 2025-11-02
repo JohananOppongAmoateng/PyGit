@@ -3,19 +3,41 @@
 import argparse
 from pathlib import Path
 
-from .core.repository import Repository
+from .core.repository import NotARepositoryError, Repository
 
 
 def init_cmd(args):
     """Initialize a new Git repository."""
     try:
         path = Path(args.directory).resolve()
-        repo = Repository(path)
-        repo.init()
+        Repository.create(path)
         print(f"Initialized empty Git repository in {path / '.pygit'}")
         return 0
-    except Exception as e:
-        print(f"Error initializing repository: {str(e)}")
+    except FileExistsError as e:
+        print(f"Error: Repository already exists: {str(e)}")
+        return 1
+    except PermissionError as e:
+        print(f"Error: Permission denied: {str(e)}")
+        return 1
+    except OSError as e:
+        print(f"Error: Failed to create repository: {str(e)}")
+        return 1
+
+
+def log_cmd(args):
+    """Show commit logs."""
+    try:
+        path = Path(args.directory).resolve()
+        Repository.log(path, args.commit)  # Pass optional commit ID
+        return 0
+    except NotARepositoryError as e:
+        print(str(e))
+        return 1
+    except PermissionError as e:
+        print(f"Error: Permission denied: {str(e)}")
+        return 1
+    except OSError as e:
+        print(f"Error: Failed to access repository: {str(e)}")
         return 1
 
 
@@ -33,6 +55,15 @@ def main():
         help="Directory to create the repository in",
     )
     init_parser.set_defaults(func=init_cmd)
+
+    # Log command
+    log_parser = subparsers.add_parser("log", help="Show commit logs")
+    log_parser.add_argument(
+        "commit",
+        nargs="?",
+        default=None,
+        help="Commit to start showing log from",
+    )
 
     args = parser.parse_args()
     if args.command:
